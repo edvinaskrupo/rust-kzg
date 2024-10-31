@@ -403,7 +403,7 @@ fn recover_cells<
 }
 
 pub fn recover_cells_and_kzg_proofs<
-    TFr: Fr,
+    TFr: Fr + Copy,
     TG1: G1 + G1Mul<TFr> + G1GetFp<TG1Fp> + G1LinComb<TFr, TG1Fp, TG1Affine>,
     TG2: G2,
     TFFTSettings: FFTSettings<TFr> + FFTFr<TFr> + FFTG1<TG1>,
@@ -418,30 +418,15 @@ pub fn recover_cells_and_kzg_proofs<
     cells: &[[TFr; FIELD_ELEMENTS_PER_CELL]],
     s: &TKZGSettings,
 ) -> Result<(), String> {
-    if recovered_cells.len() != CELLS_PER_EXT_BLOB
-        || recovered_proofs
-            .as_ref()
-            .is_some_and(|it| it.len() != CELLS_PER_EXT_BLOB)
-    {
-        return Err("Invalid output array length".to_string());
-    }
+    let cells_len = cells.len();
+    let proofs_len = recovered_proofs.as_ref().map_or(0, |it| it.len());
 
-    if cells.len() != cell_indicies.len() {
-        return Err(
-            "Cell indicies mismatch - cells length must be equal to cell indicies length"
-                .to_string(),
-        );
-    }
-
-    if cells.len() > CELLS_PER_EXT_BLOB {
-        return Err("Cell length cannot be larger than CELLS_PER_EXT_BLOB".to_string());
-    }
-
-    if cells.len() < CELLS_PER_EXT_BLOB / 2 {
-        return Err(
-            "Impossible to recover - cells length cannot be less than CELLS_PER_EXT_BLOB / 2"
-                .to_string(),
-        );
+    if recovered_cells.len() != CELLS_PER_EXT_BLOB ||
+       proofs_len != 0 && proofs_len != CELLS_PER_EXT_BLOB || 
+       cells_len != cell_indicies.len() || 
+       cells_len > CELLS_PER_EXT_BLOB || 
+       cells_len < CELLS_PER_EXT_BLOB / 2 {
+        return Err("Cell indices mismatch - invalid length".to_string());
     }
 
     for cell_index in cell_indicies {
@@ -450,25 +435,17 @@ pub fn recover_cells_and_kzg_proofs<
         }
     }
 
+    // Initialize recovered_cells with nulls in one go
     for cell in recovered_cells.iter_mut() {
-        for fr in cell {
-            *fr = TFr::null();
-        }
+        cell.fill(TFr::null());
     }
 
-    for i in 0..cells.len() {
-        let index = cell_indicies[i];
-
-        for j in 0..FIELD_ELEMENTS_PER_CELL {
-            if !recovered_cells[index][j].is_null() {
-                return Err("Invalid output cell".to_string());
-            }
-        }
-
-        recovered_cells[index] = cells[i].clone();
+    // Copy cells to recovered_cells
+    for (i, &index) in cell_indicies.iter().enumerate() {
+        recovered_cells[index].copy_from_slice(&cells[i]);
     }
 
-    if cells.len() != CELLS_PER_EXT_BLOB {
+    if cells_len != CELLS_PER_EXT_BLOB {
         recover_cells(recovered_cells.as_flattened_mut(), cell_indicies, s)?;
     }
 
@@ -485,7 +462,6 @@ pub fn recover_cells_and_kzg_proofs<
         )?;
 
         compute_fk20_proofs(recovered_proofs, &poly, FIELD_ELEMENTS_PER_BLOB, s)?;
-
         reverse_bit_order(recovered_proofs)?;
     }
 
