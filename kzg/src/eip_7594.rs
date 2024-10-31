@@ -414,46 +414,40 @@ pub fn recover_cells_and_kzg_proofs<
 >(
     recovered_cells: &mut [[TFr; FIELD_ELEMENTS_PER_CELL]],
     recovered_proofs: Option<&mut [TG1]>,
-    cell_indicies: &[usize],
+    cell_indices: &[usize],
     cells: &[[TFr; FIELD_ELEMENTS_PER_CELL]],
     s: &TKZGSettings,
 ) -> Result<(), String> {
     let cells_len = cells.len();
     let proofs_len = recovered_proofs.as_ref().map_or(0, |it| it.len());
 
-    if recovered_cells.len() != CELLS_PER_EXT_BLOB ||
-       proofs_len != 0 && proofs_len != CELLS_PER_EXT_BLOB || 
-       cells_len != cell_indicies.len() || 
-       cells_len > CELLS_PER_EXT_BLOB || 
-       cells_len < CELLS_PER_EXT_BLOB / 2 {
-        return Err("Cell indices mismatch - invalid length".to_string());
+    if !(recovered_cells.len() == CELLS_PER_EXT_BLOB && 
+          (proofs_len == 0 || proofs_len == CELLS_PER_EXT_BLOB) && 
+          cells_len == cell_indices.len() && 
+          cells_len <= CELLS_PER_EXT_BLOB && 
+          cells_len >= CELLS_PER_EXT_BLOB / 2) {
+        return Err("Cell indices mismatch - invalid length".into());
     }
 
-    for cell_index in cell_indicies {
-        if *cell_index >= CELLS_PER_EXT_BLOB {
-            return Err("Cell index cannot be larger than CELLS_PER_EXT_BLOB".to_string());
-        }
+    if cell_indices.iter().any(|&index| index >= CELLS_PER_EXT_BLOB) {
+        return Err("Cell index cannot be larger than CELLS_PER_EXT_BLOB".into());
     }
 
-    // Initialize recovered_cells with nulls in one go
+    let null_cell = TFr::null();
     for cell in recovered_cells.iter_mut() {
-        cell.fill(TFr::null());
+        cell.fill(null_cell);
     }
 
-    // Copy cells to recovered_cells
-    for (i, &index) in cell_indicies.iter().enumerate() {
+    for (i, &index) in cell_indices.iter().enumerate() {
         recovered_cells[index].copy_from_slice(&cells[i]);
     }
 
     if cells_len != CELLS_PER_EXT_BLOB {
-        recover_cells(recovered_cells.as_flattened_mut(), cell_indicies, s)?;
+        recover_cells(recovered_cells.as_flattened_mut(), cell_indices, s)?;
     }
 
-    #[allow(clippy::redundant_slicing)]
-    let recovered_cells = &recovered_cells[..];
-
     if let Some(recovered_proofs) = recovered_proofs {
-        let mut poly = vec![TFr::default(); FIELD_ELEMENTS_PER_EXT_BLOB];
+        let mut poly = [TFr::default(); FIELD_ELEMENTS_PER_EXT_BLOB];
 
         poly_lagrange_to_monomial(
             &mut poly,
