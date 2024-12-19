@@ -876,3 +876,4 @@ pub fn verify_cell_kzg_proof_batch<
         power_of_s,
     ))
 }
+
